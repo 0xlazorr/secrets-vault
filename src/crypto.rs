@@ -3,7 +3,7 @@ use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use rand::{rngs::OsRng, RngCore};
 use thiserror::Error;
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 pub const SALT_LEN: usize = 16;
 pub const NONCE_LEN: usize = 12;
@@ -54,10 +54,11 @@ pub fn encrypt_payload(key: &SensitiveKey, nonce: &[u8; NONCE_LEN], plaintext: &
     cipher.encrypt(cipher_nonce, plaintext).map_err(|_| CryptoError::EncryptionError)
 }
 
-pub fn decrypt_payload(key: &SensitiveKey, nonce: &[u8; NONCE_LEN], ciphertext: &[u8]) -> Result<Vec<u8>, CryptoError> {
+pub fn decrypt_payload(key: &SensitiveKey, nonce: &[u8; NONCE_LEN], ciphertext: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
     let cipher_key = Key::from_slice(&key.0);
     let cipher = ChaCha20Poly1305::new(cipher_key);
     let cipher_nonce = Nonce::from_slice(nonce);
 
-    cipher.decrypt(cipher_nonce, ciphertext).map_err(|_| CryptoError::DecryptionError)
+    let decrypted = cipher.decrypt(cipher_nonce, ciphertext).map_err(|_| CryptoError::DecryptionError)?;
+    Ok(Zeroizing::new(decrypted))
 }

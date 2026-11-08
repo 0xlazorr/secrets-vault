@@ -35,19 +35,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command {
         Commands::Set { key, value, vault: path, pass } => {
-            let salt = [0x77u8; 16];
-            let k = derive_key(pass.as_bytes(), &salt)?;
-            let mut vault = if std::path::Path::new(&path).exists() {
-                Vault::load_from_file(&path, &k).unwrap_or_default()
+            let (salt, mut vault) = if std::path::Path::new(&path).exists() {
+                let salt = Vault::read_salt_from_file(&path).unwrap_or([0x77u8; 16]);
+                let k = derive_key(pass.as_bytes(), &salt)?;
+                let v = Vault::load_from_file(&path, &k).unwrap_or_default();
+                (salt, v)
             } else {
-                Vault::new()
+                let salt = secrets_vault::crypto::generate_salt();
+                (salt, Vault::new())
             };
+            let k = derive_key(pass.as_bytes(), &salt)?;
             vault.insert(key.clone(), value);
-            vault.save_to_file(&path, &k)?;
+            vault.save_with_salt(&path, &k, &salt)?;
             println!("🔒 Secret key '{}' saved securely to {}", key, path);
         }
         Commands::Get { key, vault: path, pass } => {
-            let salt = [0x77u8; 16];
+            let salt = if std::path::Path::new(&path).exists() {
+                Vault::read_salt_from_file(&path).unwrap_or([0x77u8; 16])
+            } else {
+                [0x77u8; 16]
+            };
             let k = derive_key(pass.as_bytes(), &salt)?;
             let vault = Vault::load_from_file(&path, &k)?;
             match vault.get(&key) {
